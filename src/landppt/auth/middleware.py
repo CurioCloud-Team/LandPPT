@@ -33,7 +33,8 @@ class AuthMiddleware:
             "/redoc",
             "/openapi.json",
             "/static",
-            "/favicon.ico"
+            "/favicon.ico",
+            "/health"  # 健康检查端点公开访问
         }
         # 不需要认证的路径前缀
         self.public_prefixes = [
