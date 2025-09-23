@@ -27,6 +27,7 @@ class AuthMiddleware:
             "/auth/logout",
             "/api/auth/login",
             "/api/auth/logout",
+            "/api/auth/jwt/login",  # JWT登录端点
             "/api/auth/check",
             "/docs",
             "/redoc",

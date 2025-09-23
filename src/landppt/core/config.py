@@ -265,7 +265,7 @@ class AppConfig(BaseSettings):
     reload: bool = Field(default=True, env="RELOAD")
     
     # Database Configuration (for future use)
-    database_url: str = Field(default="sqlite:///./landppt.db", env="DATABASE_URL")
+    database_url: str = Field(default="mysql+pymysql://user:pass@localhost:3306/curio_cloud", env="DATABASE_URL")
     
     # Security Configuration
     secret_key: str = Field(default="your-secret-key-here", env="SECRET_KEY")

@@ -6,8 +6,11 @@ import time
 import secrets
 import hashlib
 from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
+from jose import JWTError, jwt
+from passlib.context import CryptContext
 
 from ..database.models import User, UserSession
 from ..database.database import get_db
@@ -19,6 +22,9 @@ class AuthService:
 
     def __init__(self):
         self.session_expire_minutes = app_config.access_token_expire_minutes
+        self.secret_key = app_config.secret_key
+        self.algorithm = "HS256"
+        self.access_token_expire_minutes = app_config.access_token_expire_minutes
 
     def _get_current_expire_minutes(self) -> int:
         """Get current session expire minutes from config (for real-time updates)"""
@@ -191,6 +197,25 @@ class AuthService:
                 UserSession.is_active == True
             )
         ).all()
+    
+    def create_access_token(self, data: dict, expires_delta: Optional[timedelta] = None):
+        """Create JWT access token"""
+        to_encode = data.copy()
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(minutes=self.access_token_expire_minutes)
+        to_encode.update({"exp": expire})
+        encoded_jwt = jwt.encode(to_encode, self.secret_key, algorithm=self.algorithm)
+        return encoded_jwt
+    
+    def verify_token(self, token: str) -> Optional[Dict[str, Any]]:
+        """Verify JWT token"""
+        try:
+            payload = jwt.decode(token, self.secret_key, algorithms=[self.algorithm])
+            return payload
+        except JWTError:
+            return None
 
 
 # Global auth service instance

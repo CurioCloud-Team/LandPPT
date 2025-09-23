@@ -5,7 +5,9 @@ Authentication routes for LandPPT
 from fastapi import APIRouter, Request, Form, Depends, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
+from datetime import timedelta
 import logging
 
 from .auth_service import get_auth_service, AuthService
@@ -17,6 +19,8 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="src/landppt/web/templates")
+
+security = HTTPBearer()
 
 
 @router.get("/auth/login", response_class=HTMLResponse)
@@ -203,6 +207,32 @@ async def api_login(
     }
 
 
+@router.post("/api/auth/jwt/login")
+async def api_jwt_login(
+    username: str = Form(...),
+    password: str = Form(...),
+    db: Session = Depends(get_db),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """JWT-based API login"""
+    user = auth_service.authenticate_user(db, username, password)
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="用户名或密码错误")
+    
+    access_token_expires = timedelta(minutes=auth_service.access_token_expire_minutes)
+    access_token = auth_service.create_access_token(
+        data={"sub": user.username, "user_id": user.id}, expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": auth_service.access_token_expire_minutes * 60,
+        "user": user.to_dict()
+    }
+
+
 @router.post("/api/auth/logout")
 async def api_logout(
     request: Request,
@@ -241,3 +271,17 @@ async def api_check_auth(
         "authenticated": user is not None,
         "user": user.to_dict() if user else None
     }
+
+
+def get_current_user_jwt(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db), auth_service: AuthService = Depends(get_auth_service)):
+    """JWT dependency for protected routes"""
+    token = credentials.credentials
+    payload = auth_service.verify_token(token)
+    if payload is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+    
+    user_id = payload.get("user_id")
+    user = auth_service.get_user_by_id(db, user_id)
+    if user is None:
+        raise HTTPException(status_code=401, detail="User not found")
+    return user

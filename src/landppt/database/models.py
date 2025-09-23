@@ -1,7 +1,3 @@
-"""
-SQLAlchemy database models for LandPPT
-"""
-
 import time
 import hashlib
 from typing import Dict, Any, List, Optional
@@ -9,8 +5,12 @@ from sqlalchemy import Column, Integer, String, Text, Float, Boolean, ForeignKey
 from sqlalchemy.orm import relationship, Mapped, mapped_column
 from sqlalchemy.ext.declarative import declarative_base
 from datetime import datetime
+from passlib.context import CryptContext
 
 Base = declarative_base()
+
+# Password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class User(Base):
@@ -19,20 +19,22 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
     username: Mapped[str] = mapped_column(String(50), unique=True, index=True, nullable=False)
-    password_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    email: Mapped[Optional[str]] = mapped_column(String(100), unique=True, index=True, nullable=True)
+    email: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)  # Made not null to match CurioCloud
+    full_name: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # Added for CurioCloud compatibility
+    hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)  # Changed from password_hash to match CurioCloud
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    is_admin: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[float] = mapped_column(Float, default=time.time)
-    last_login: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False)  # Added for CurioCloud compatibility
+    # Note: is_admin field is not in CurioCloud database - removed for compatibility
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)  # Changed to DateTime to match CurioCloud
+    # Note: last_login is not in CurioCloud database - kept for LandPPT functionality but not persisted
 
     def set_password(self, password: str):
-        """Set password hash"""
-        self.password_hash = hashlib.sha256(password.encode()).hexdigest()
+        """Set password hash using bcrypt"""
+        self.hashed_password = pwd_context.hash(password)
 
     def check_password(self, password: str) -> bool:
-        """Check if password is correct"""
-        return self.password_hash == hashlib.sha256(password.encode()).hexdigest()
+        """Check if password is correct using bcrypt"""
+        return pwd_context.verify(password, self.hashed_password)
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary"""
@@ -40,10 +42,12 @@ class User(Base):
             "id": self.id,
             "username": self.username,
             "email": self.email,
+            "full_name": self.full_name,
             "is_active": self.is_active,
-            "is_admin": self.is_admin,
+            "is_verified": self.is_verified,
+            # Note: is_admin removed for CurioCloud compatibility
             "created_at": self.created_at,
-            "last_login": self.last_login
+            # Note: last_login not in CurioCloud database
         }
 
 

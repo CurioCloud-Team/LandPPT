@@ -13,9 +13,11 @@ from ..core.config import app_config
 # Create database URL
 DATABASE_URL = app_config.database_url
 
-# For async SQLite, we need to use aiosqlite
+# For async databases, we need to use appropriate async drivers
 if DATABASE_URL.startswith("sqlite:///"):
     ASYNC_DATABASE_URL = DATABASE_URL.replace("sqlite:///", "sqlite+aiosqlite:///")
+elif DATABASE_URL.startswith("mysql+pymysql://"):
+    ASYNC_DATABASE_URL = DATABASE_URL.replace("mysql+pymysql://", "mysql+aiomysql://")
 else:
     ASYNC_DATABASE_URL = DATABASE_URL
 
