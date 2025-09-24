@@ -248,3 +248,39 @@ class SpeechScript(Base):
 
     def __repr__(self):
         return f"<SpeechScript(id={self.id}, project_id='{self.project_id}', slide_index={self.slide_index})>"
+
+
+class ApiKey(Base):
+    """API Key model for external API access"""
+    __tablename__ = "api_keys"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    api_key: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[float] = mapped_column(Float, default=time.time)
+    last_used_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    expires_at: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
+    # Relationship
+    user: Mapped["User"] = relationship("User")
+
+    def is_expired(self) -> bool:
+        """Check if API key is expired"""
+        if self.expires_at is None:
+            return False
+        return time.time() > self.expires_at
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary"""
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "name": self.name,
+            "api_key": self.api_key,
+            "is_active": self.is_active,
+            "created_at": self.created_at,
+            "last_used_at": self.last_used_at,
+            "expires_at": self.expires_at
+        }

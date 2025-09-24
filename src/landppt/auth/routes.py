@@ -9,6 +9,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from datetime import timedelta
 import logging
+from typing import Optional
 
 from .auth_service import get_auth_service, AuthService
 from .middleware import get_current_user_optional, get_current_user_required
@@ -285,3 +286,79 @@ def get_current_user_jwt(credentials: HTTPAuthorizationCredentials = Depends(sec
     if user is None:
         raise HTTPException(status_code=401, detail="User not found")
     return user
+
+
+@router.post("/api/auth/api-keys")
+async def create_api_key(
+    name: str = Form(...),
+    expires_in_days: Optional[int] = Form(None),
+    user: User = Depends(get_current_user_required),
+    db: Session = Depends(get_db),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Create a new API key"""
+    try:
+        api_key_obj = auth_service.create_api_key(db, user, name, expires_in_days)
+        return {
+            "success": True,
+            "api_key": {
+                "id": api_key_obj.id,
+                "name": api_key_obj.name,
+                "api_key": api_key_obj.api_key,  # Only show on creation
+                "created_at": api_key_obj.created_at,
+                "expires_at": api_key_obj.expires_at
+            },
+            "message": "API密钥创建成功，请妥善保存"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"创建API密钥失败: {str(e)}")
+
+
+@router.get("/api/auth/api-keys")
+async def list_api_keys(
+    user: User = Depends(get_current_user_required),
+    db: Session = Depends(get_db),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """List user's API keys"""
+    try:
+        api_keys = auth_service.list_user_api_keys(db, user)
+        return {
+            "success": True,
+            "api_keys": [
+                {
+                    "id": key.id,
+                    "name": key.name,
+                    "is_active": key.is_active,
+                    "created_at": key.created_at,
+                    "last_used_at": key.last_used_at,
+                    "expires_at": key.expires_at
+                }
+                for key in api_keys
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取API密钥列表失败: {str(e)}")
+
+
+@router.delete("/api/auth/api-keys/{api_key_id}")
+async def revoke_api_key(
+    api_key_id: int,
+    user: User = Depends(get_current_user_required),
+    db: Session = Depends(get_db),
+    auth_service: AuthService = Depends(get_auth_service)
+):
+    """Revoke an API key"""
+    try:
+        success = auth_service.revoke_api_key(db, user, api_key_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="API密钥不存在或无权限访问")
+        
+        return {
+            "success": True,
+            "message": "API密钥已撤销"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"撤销API密钥失败: {str(e)}")

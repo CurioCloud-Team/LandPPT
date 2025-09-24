@@ -12,7 +12,7 @@ from sqlalchemy import and_
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from ..database.models import User, UserSession
+from ..database.models import User, UserSession, ApiKey
 from ..database.database import get_db
 from ..core.config import app_config
 
@@ -45,8 +45,7 @@ class AuthService:
         # Create new user
         user = User(
             username=username,
-            email=email,
-            is_admin=is_admin
+            email=email or f"{username}@example.com",  # Provide default email if none given
         )
         user.set_password(password)
         
@@ -216,7 +215,71 @@ class AuthService:
             return payload
         except JWTError:
             return None
-
+    
+    def create_api_key(self, db: Session, user: User, name: str, expires_in_days: Optional[int] = None) -> ApiKey:
+        """Create a new API key for user"""
+        import secrets
+        
+        # Generate API key
+        api_key = secrets.token_urlsafe(64)
+        
+        # Calculate expiration time
+        expires_at = None
+        if expires_in_days:
+            expires_at = time.time() + (expires_in_days * 24 * 60 * 60)
+        
+        # Create API key record
+        api_key_obj = ApiKey(
+            user_id=user.id,
+            name=name,
+            api_key=api_key,
+            expires_at=expires_at
+        )
+        
+        db.add(api_key_obj)
+        db.commit()
+        db.refresh(api_key_obj)
+        
+        return api_key_obj
+    
+    def get_user_by_api_key(self, db: Session, api_key: str) -> Optional[User]:
+        """Get user by API key"""
+        api_key_obj = db.query(ApiKey).filter(
+            and_(
+                ApiKey.api_key == api_key,
+                ApiKey.is_active == True
+            )
+        ).first()
+        
+        if not api_key_obj or api_key_obj.is_expired():
+            return None
+        
+        # Update last used time
+        api_key_obj.last_used_at = time.time()
+        db.commit()
+        
+        return api_key_obj.user
+    
+    def list_user_api_keys(self, db: Session, user: User) -> list[ApiKey]:
+        """List all API keys for a user"""
+        return db.query(ApiKey).filter(ApiKey.user_id == user.id).all()
+    
+    def revoke_api_key(self, db: Session, user: User, api_key_id: int) -> bool:
+        """Revoke an API key"""
+        api_key_obj = db.query(ApiKey).filter(
+            and_(
+                ApiKey.id == api_key_id,
+                ApiKey.user_id == user.id
+            )
+        ).first()
+        
+        if api_key_obj:
+            api_key_obj.is_active = False
+            db.commit()
+            return True
+        
+        return False
+    
 
 # Global auth service instance
 auth_service = AuthService()
@@ -237,7 +300,7 @@ def init_default_admin(db: Session) -> None:
         default_password = "admin123"
         
         try:
-            auth_service.create_user(
+            user = auth_service.create_user(
                 db=db,
                 username=default_username,
                 password=default_password,
@@ -245,6 +308,12 @@ def init_default_admin(db: Session) -> None:
             )
             print(f"默认管理员账户已创建: {default_username} / {default_password}")
             print("请及时修改默认密码！")
+            
+            # Create default API key for external integrations
+            api_key_obj = auth_service.create_api_key(db, user, "Default API Key")
+            print(f"默认API密钥已创建: {api_key_obj.api_key}")
+            print("请妥善保存此API密钥！")
+            
         except Exception as e:
             print(f"创建默认管理员账户失败: {e}")
 
